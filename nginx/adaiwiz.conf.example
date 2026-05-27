@@ -1,7 +1,7 @@
-# Replace app.example.com with your production domain.
+# AdAIWiz production Nginx config.
 server {
     listen 80;
-    server_name app.example.com;
+    server_name www.adaiwiz.com adaiwiz.com;
 
     client_max_body_size 50m;
 

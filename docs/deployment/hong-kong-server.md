@@ -43,7 +43,7 @@ You must fill it on the server:
 ```env
 SHOPIFY_API_KEY=your_shopify_client_id
 SHOPIFY_API_SECRET=your_shopify_client_secret
-SHOPIFY_APP_URL=https://your-domain.example
+SHOPIFY_APP_URL=https://www.adaiwiz.com
 SCOPES=read_products
 NODE_ENV=production
 PORT=3000
@@ -76,7 +76,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Replace `app.example.com` with your real domain.
+The example is prefilled with `www.adaiwiz.com` and `adaiwiz.com`.
 
 ## HTTPS
 
@@ -84,7 +84,7 @@ Recommended with Certbot:
 
 ```bash
 sudo apt-get install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.example
+sudo certbot --nginx -d www.adaiwiz.com -d adaiwiz.com
 ```
 
 ## Shopify app configuration
@@ -92,16 +92,16 @@ sudo certbot --nginx -d your-domain.example
 After you have a real domain, update Shopify app config so these values match production:
 
 ```toml
-application_url = "https://your-domain.example"
+application_url = "https://www.adaiwiz.com"
 
 [access_scopes]
 scopes = "read_products"
 
 [auth]
 redirect_urls = [
-  "https://your-domain.example/auth/callback",
-  "https://your-domain.example/auth/shopify/callback",
-  "https://your-domain.example/api/auth/callback"
+  "https://www.adaiwiz.com/auth/callback",
+  "https://www.adaiwiz.com/auth/shopify/callback",
+  "https://www.adaiwiz.com/api/auth/callback"
 ]
 ```
 

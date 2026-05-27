@@ -2,7 +2,7 @@
 
 client_id = "75dabda94715b82d25167321fa6fc848"
 name = "pitest"
-application_url = "https://shopify.dev/apps/default-app-home"
+application_url = "https://www.adaiwiz.com"
 embedded = true
 
 [access_scopes]
@@ -21,7 +21,11 @@ api_version = "2026-07"
   topics = [ "app/scopes_update" ]
 
 [auth]
-redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+redirect_urls = [
+  "https://www.adaiwiz.com/auth/callback",
+  "https://www.adaiwiz.com/auth/shopify/callback",
+  "https://www.adaiwiz.com/api/auth/callback"
+]
 
 [build]
 automatically_update_urls_on_dev = true
