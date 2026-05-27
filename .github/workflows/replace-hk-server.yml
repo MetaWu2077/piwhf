@@ -112,13 +112,22 @@ jobs:
               }
           }
           NGINX
+          echo "== Disable duplicate nginx server blocks for adaiwiz.com =="
+          for site in /etc/nginx/sites-enabled/*; do
+            [ -e "$site" ] || continue
+            target=$(readlink -f "$site" || printf '%s' "$site")
+            if [ "$target" != "/etc/nginx/sites-available/adaiwiz" ] && grep -q "adaiwiz.com" "$target" 2>/dev/null; then
+              echo "Disabling duplicate nginx site: $site -> $target"
+              sudo rm -f "$site"
+            fi
+          done
           sudo ln -sfn /etc/nginx/sites-available/adaiwiz /etc/nginx/sites-enabled/adaiwiz
           sudo rm -f /etc/nginx/sites-enabled/default || true
           sudo nginx -t
           if sudo systemctl is-active --quiet nginx; then
             sudo systemctl reload nginx
           else
-            sudo systemctl start nginx
+            sudo systemctl start nginx || (sudo journalctl -xeu nginx.service --no-pager | tail -80 && exit 1)
           fi
 
           echo "== PM2 after =="
