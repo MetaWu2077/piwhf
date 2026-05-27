@@ -1,0 +1,124 @@
+name: Replace HK server with AdAIWiz
+
+on:
+  workflow_dispatch:
+
+jobs:
+  replace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.HK_SERVER_SSH_KEY }}" > ~/.ssh/adaiwiz_hk
+          chmod 600 ~/.ssh/adaiwiz_hk
+          ssh-keyscan -H "${{ secrets.HK_SERVER_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Stop old apps and switch www.adaiwiz.com to AdAIWiz
+        env:
+          SHOPIFY_API_SECRET_VALUE: ${{ secrets.SHOPIFY_API_SECRET }}
+        run: |
+          SECRET_B64="$(printf '%s' "$SHOPIFY_API_SECRET_VALUE" | base64 -w0)"
+          ssh -i ~/.ssh/adaiwiz_hk "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}" "SHOPIFY_API_SECRET_B64='$SECRET_B64' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          APP_DIR="/var/www/adaiwiz"
+          ENV_FILE="$APP_DIR/shared/.env"
+          APP_URL="https://www.adaiwiz.com"
+          APP_KEY="75dabda94715b82d25167321fa6fc848"
+
+          echo "== PM2 before =="
+          pm2 list || true
+
+          echo "== Stop/delete PM2 apps except adaiwiz =="
+          if command -v pm2 >/dev/null 2>&1; then
+            PM2_NAMES=$(pm2 jlist 2>/dev/null | node -e "let s=''; process.stdin.on('data',d=>s+=d); process.stdin.on('end',()=>{try{for (const p of JSON.parse(s)) if (p.name !== 'adaiwiz') console.log(p.name)}catch(e){}})")
+            for name in $PM2_NAMES; do
+              echo "Stopping old PM2 app: $name"
+              pm2 stop "$name" || true
+              pm2 delete "$name" || true
+            done
+          fi
+
+          echo "== Ensure production env for AdAIWiz =="
+          mkdir -p "$APP_DIR/shared"
+          touch "$ENV_FILE"
+          chmod 600 "$ENV_FILE"
+
+          set_env_var() {
+            key="$1"
+            value="$2"
+            if grep -q "^${key}=" "$ENV_FILE"; then
+              sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+            else
+              printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+            fi
+          }
+
+          set_env_var SHOPIFY_API_KEY "$APP_KEY"
+          set_env_var SHOPIFY_APP_URL "$APP_URL"
+          set_env_var SCOPES "read_products"
+          set_env_var NODE_ENV "production"
+          set_env_var PORT "3000"
+          set_env_var DATABASE_URL "file:/var/www/adaiwiz/shared/production.sqlite"
+
+          if [ -n "${SHOPIFY_API_SECRET_B64:-}" ]; then
+            SHOPIFY_API_SECRET_DECODED=$(printf '%s' "$SHOPIFY_API_SECRET_B64" | base64 -d)
+            set_env_var SHOPIFY_API_SECRET "$SHOPIFY_API_SECRET_DECODED"
+            echo "SHOPIFY_API_SECRET updated from GitHub Secret SHOPIFY_API_SECRET."
+          else
+            echo "WARNING: GitHub Secret SHOPIFY_API_SECRET is not set. Existing server SHOPIFY_API_SECRET was preserved."
+          fi
+
+          echo "== Safe env check =="
+          grep -E "^(SHOPIFY_API_KEY|SHOPIFY_APP_URL|SCOPES|NODE_ENV|PORT|DATABASE_URL)=" "$ENV_FILE" || true
+          if ! grep -q "^SHOPIFY_API_SECRET=." "$ENV_FILE"; then
+            echo "WARNING: SHOPIFY_API_SECRET is missing. OAuth will fail until you set /var/www/adaiwiz/shared/.env."
+          fi
+
+          echo "== Start/reload AdAIWiz =="
+          if [ ! -d "$APP_DIR/current" ]; then
+            echo "$APP_DIR/current does not exist. Run the deploy workflow first." >&2
+            exit 1
+          fi
+          cd "$APP_DIR/current"
+          npm run setup
+          pm2 startOrReload ecosystem.config.cjs --update-env
+          pm2 save || true
+
+          echo "== Configure Nginx for www.adaiwiz.com -> 127.0.0.1:3000 =="
+          sudo tee /etc/nginx/sites-available/adaiwiz >/dev/null <<'NGINX'
+          server {
+              listen 80;
+              server_name www.adaiwiz.com adaiwiz.com;
+
+              client_max_body_size 50m;
+
+              location / {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_cache_bypass $http_upgrade;
+              }
+          }
+          NGINX
+          sudo ln -sfn /etc/nginx/sites-available/adaiwiz /etc/nginx/sites-enabled/adaiwiz
+          sudo rm -f /etc/nginx/sites-enabled/default || true
+          sudo nginx -t
+          sudo systemctl reload nginx
+
+          echo "== PM2 after =="
+          pm2 list || true
+          echo "== Local health =="
+          curl -I --max-time 10 http://127.0.0.1:3000 || true
+          REMOTE
