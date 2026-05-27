@@ -1,0 +1,128 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model GenerationJob {
+  id             String             @id @default(cuid())
+  shop           String
+  status         GenerationStatus   @default(DRAFT)
+  source         ProductSource      @default(SHOPIFY_PRODUCT)
+  objective      CampaignObjective  @default(PURCHASE)
+  platform       AdPlatform         @default(META)
+  format         VideoFormat        @default(REELS_9_16)
+  style          CreativeStyle      @default(UGC)
+  productGid     String?
+  productTitle   String
+  productHandle  String?
+  productImage   String?
+  productSummary String?
+  hook           String
+  script         String
+  prompt         String
+  cta            String             @default("Shop now")
+  videoUrl       String?
+  error          String?
+  costCents      Int                @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  variants       CreativeVariant[]
+
+  @@index([shop, createdAt])
+  @@index([shop, status])
+}
+
+model CreativeVariant {
+  id        String        @id @default(cuid())
+  jobId     String
+  angle     String
+  hook      String
+  primaryText String
+  headline  String
+  prompt    String
+  status    VariantStatus @default(PLANNED)
+  videoUrl  String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  job       GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+}
+
+enum GenerationStatus {
+  DRAFT
+  QUEUED
+  GENERATING
+  READY
+  FAILED
+}
+
+enum VariantStatus {
+  PLANNED
+  QUEUED
+  GENERATING
+  READY
+  FAILED
+}
+
+enum ProductSource {
+  SHOPIFY_PRODUCT
+  MANUAL
+}
+
+enum CampaignObjective {
+  PURCHASE
+  LEAD
+  TRAFFIC
+  AWARENESS
+}
+
+enum AdPlatform {
+  META
+  TIKTOK
+  GOOGLE
+}
+
+enum VideoFormat {
+  REELS_9_16
+  FEED_1_1
+  LANDSCAPE_16_9
+}
+
+enum CreativeStyle {
+  UGC
+  PRODUCT_DEMO
+  PROBLEM_SOLUTION
+  BEFORE_AFTER
+  TESTIMONIAL
+}

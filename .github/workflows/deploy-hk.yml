@@ -1,0 +1,70 @@
+name: Deploy to Hong Kong server
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Package release
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='build' \
+            --exclude='.react-router' \
+            --exclude='.shopify' \
+            --exclude='prisma/dev.sqlite' \
+            --exclude='prisma/dev.sqlite-journal' \
+            -czf adaiwiz-release.tgz .
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.HK_SERVER_SSH_KEY }}" > ~/.ssh/adaiwiz_hk
+          chmod 600 ~/.ssh/adaiwiz_hk
+          ssh-keyscan -H "${{ secrets.HK_SERVER_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Bootstrap server
+        run: |
+          ssh -i ~/.ssh/adaiwiz_hk "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}" 'bash -s' < deploy/server-bootstrap.sh
+
+      - name: Upload artifact and deploy script
+        run: |
+          scp -i ~/.ssh/adaiwiz_hk adaiwiz-release.tgz "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}:/var/www/adaiwiz/adaiwiz-release.tgz"
+          scp -i ~/.ssh/adaiwiz_hk deploy/deploy.sh "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}:/var/www/adaiwiz/deploy.sh"
+
+      - name: Deploy with PM2
+        run: |
+          ssh -i ~/.ssh/adaiwiz_hk "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}" 'cd /var/www/adaiwiz && chmod +x deploy.sh && ARTIFACT=/var/www/adaiwiz/adaiwiz-release.tgz ./deploy.sh'
+
+      - name: Show PM2 status
+        run: |
+          ssh -i ~/.ssh/adaiwiz_hk "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}" 'pm2 status adaiwiz || true'
