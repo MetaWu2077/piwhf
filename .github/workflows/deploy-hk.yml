@@ -43,7 +43,8 @@ jobs:
             --exclude='.shopify' \
             --exclude='prisma/dev.sqlite' \
             --exclude='prisma/dev.sqlite-journal' \
-            -czf adaiwiz-release.tgz .
+            -czf "$RUNNER_TEMP/adaiwiz-release.tgz" .
+          mv "$RUNNER_TEMP/adaiwiz-release.tgz" ./adaiwiz-release.tgz
 
       - name: Configure SSH
         run: |
