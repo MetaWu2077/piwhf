@@ -29,9 +29,17 @@ npm ci
 npm run build
 npm run setup
 
-ln -sfn "$RELEASE_DIR" "$CURRENT_DIR"
+if [ -L "$CURRENT_DIR" ] || [ -e "$CURRENT_DIR" ]; then
+  rm -rf "$CURRENT_DIR"
+fi
+ln -s "$RELEASE_DIR" "$CURRENT_DIR"
 
 cd "$CURRENT_DIR"
+if [ ! -f ecosystem.config.cjs ]; then
+  echo "ecosystem.config.cjs not found in $CURRENT_DIR" >&2
+  ls -la "$CURRENT_DIR" >&2
+  exit 1
+fi
 pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save || true
 
