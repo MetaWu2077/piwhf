@@ -1,0 +1,31 @@
+name: Diag3
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.HK_SERVER_SSH_KEY }}" > ~/.ssh/hk
+          chmod 600 ~/.ssh/hk
+          ssh-keyscan -H "${{ secrets.HK_SERVER_HOST }}" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/hk "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}" bash <<'EOF'
+          echo "=== all server blocks in nginx ==="
+          sudo nginx -T 2>&1 | grep -E "^server \{|^    server_name|^    listen" | head -60
+          echo ""
+          echo "=== nginx.conf http block includes ==="
+          sudo nginx -T 2>&1 | grep -E "include.*sites" | head -20
+          echo ""
+          echo "=== full nginx.conf ==="
+          cat /etc/nginx/nginx.conf
+          echo ""
+          echo "=== /etc/nginx/conf.d ==="
+          ls -la /etc/nginx/conf.d/ 2>/dev/null
+          echo ""
+          echo "=== /etc/nginx/snippets ==="
+          ls -la /etc/nginx/snippets/ 2>/dev/null
+          EOF
