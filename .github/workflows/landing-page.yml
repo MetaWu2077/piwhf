@@ -1,0 +1,102 @@
+name: Deploy Landing Page
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.HK_SERVER_SSH_KEY }}" > ~/.ssh/hk
+          chmod 600 ~/.ssh/hk
+          ssh-keyscan -H "${{ secrets.HK_SERVER_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload landing page and update nginx
+        run: |
+          scp -i ~/.ssh/hk app/public/index.html "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}:/tmp/index.html"
+
+          ssh -i ~/.ssh/hk "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}" bash <<'EOF'
+          set -euo pipefail
+
+          # Move landing page
+          cp /tmp/index.html /var/www/adaiwiz/shared/index.html
+          chmod 644 /var/www/adaiwiz/shared/index.html
+
+          # Write new nginx config: HTTP=landing page, HTTPS=App
+          sudo tee /etc/nginx/sites-available/adaiwiz > /dev/null <<'NGINX'
+          # HTTP — Landing page
+          server {
+              listen 80;
+              server_name www.adaiwiz.com;
+
+              root /var/www/adaiwiz/shared;
+              index index.html;
+
+              location / {
+                  try_files $uri $uri/ /index.html;
+              }
+
+              location /app {
+                  return 301 https://www.adaiwiz.com$request_uri;
+              }
+
+              location /auth {
+                  return 301 https://www.adaiwiz.com$request_uri;
+              }
+
+              location /api {
+                  return 301 https://www.adaiwiz.com$request_uri;
+              }
+
+              location ~ /\.well-known/acme-challenge/ {
+                  allow all;
+              }
+          }
+
+          # HTTPS — Shopify App
+          server {
+              listen 443 ssl;
+              listen [::]:443 ssl;
+              server_name www.adaiwiz.com;
+
+              ssl_certificate /etc/letsencrypt/live/www.adaiwiz.com/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/www.adaiwiz.com/privkey.pem;
+              include /etc/letsencrypt/options-ssl-nginx.conf;
+
+              client_max_body_size 50m;
+
+              location / {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_cache_bypass $http_upgrade;
+              }
+          }
+          NGINX
+
+          # Restart nginx
+          sudo pkill -9 nginx || true
+          sleep 1
+          sudo nginx
+
+          # Verify
+          echo "=== ports ==="
+          sudo ss -ltnp | grep -E ':80|:443'
+          echo "=== http test ==="
+          curl -sS --max-time 5 http://www.adaiwiz.com | head -5
+          echo ""
+          echo "=== https test (app) ==="
+          curl -sS --max-time 5 https://www.adaiwiz.com | head -3
+          EOF
