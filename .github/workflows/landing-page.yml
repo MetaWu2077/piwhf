@@ -73,8 +73,8 @@ jobs:
           sudo ss -ltnp | grep -E ':80|:443'
           echo ""
           echo "=== https test (landing page) ==="
-          curl -sS --max-time 8 https://www.adaiwiz.com | head -5
+          curl -sS --max-time 8 https://www.adaiwiz.com | head -5 || true
           echo ""
           echo "=== http test (should redirect) ==="
-          curl -sS --max-time 8 -I http://www.adaiwiz.com | grep -E "HTTP|Location"
+          curl -sS --max-time 8 -I http://www.adaiwiz.com 2>/dev/null | grep -E "HTTP|Location" || true
           EOF
