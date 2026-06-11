@@ -20,7 +20,7 @@ jobs:
 
       - name: Upload landing page and update nginx
         run: |
-          scp -i ~/.ssh/hk app/public/index.html "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}:/tmp/index.html"
+          scp -i ~/.ssh/hk public/index.html "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}:/tmp/index.html"
 
           ssh -i ~/.ssh/hk "${{ secrets.HK_SERVER_USER }}@${{ secrets.HK_SERVER_HOST }}" bash <<'EOF'
           set -euo pipefail
